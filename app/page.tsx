@@ -1,9 +1,8 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, TrendingUp, Globe, Activity, Zap, BarChart3, Layers } from "lucide-react";
 import { fmtB, fmtPct, COIN_META, TOP15_IDS, computeSignals, SECTORS } from "@/lib/data";
+import type { TabId } from "@/lib/data";
 import type { Coin, GlobalData, TrendingCoin, Protocol, ChainData } from "@/lib/data";
-
 import TopBar from "@/components/TopBar";
 import TabNav from "@/components/TabNav";
 import RevOpsView from "@/components/RevOpsView";
@@ -14,31 +13,28 @@ import SectorView from "@/components/SectorView";
 import DeFiView from "@/components/DeFiView";
 import StatusBar from "@/components/StatusBar";
 
-export type TabId = "revops" | "overview" | "token" | "radar" | "sector" | "defi";
 
-export interface AppState {
+interface AppState {
   coins: Coin[];
   global: GlobalData | null;
   trending: TrendingCoin[];
   protocols: Protocol[];
   chains: ChainData[];
-  tvlHistory: { date: string; value: number }[];
   selectedCoin: Coin | null;
   loading: boolean;
   lastUpdated: Date | null;
-  error: string | null;
 }
 
 export default function Page() {
   const [tab, setTab] = useState<TabId>("revops");
   const [state, setState] = useState<AppState>({
     coins: [], global: null, trending: [],
-    protocols: [], chains: [], tvlHistory: [],
-    selectedCoin: null, loading: true, lastUpdated: null, error: null,
+    protocols: [], chains: [],
+    selectedCoin: null, loading: true, lastUpdated: null,
   });
 
   const fetchAll = useCallback(async () => {
-    setState(s => ({ ...s, loading: true, error: null }));
+    setState(s => ({ ...s, loading: true }));
     try {
       const [marketsRes, globalRes, trendingRes, protosRes, chainsRes] = await Promise.allSettled([
         fetch(`/api/cg?path=%2Fcoins%2Fmarkets&vs_currency=usd&ids=${TOP15_IDS}&order=market_cap_desc&per_page=15&price_change_percentage=7d`),
@@ -48,7 +44,6 @@ export default function Page() {
         fetch(`/api/dl?path=%2Fv2%2Fchains`),
       ]);
 
-      // Parse coins
       let coins: Coin[] = [];
       if (marketsRes.status === "fulfilled" && marketsRes.value.ok) {
         const raw = await marketsRes.value.json();
@@ -58,7 +53,7 @@ export default function Page() {
             const c24 = c.price_change_percentage_24h || 0;
             const c7 = c.price_change_percentage_7d_in_currency || 0;
             return {
-              id: c.id, name: c.name, symbol: c.symbol?.toUpperCase(),
+              id: c.id, name: c.name, symbol: c.symbol?.toUpperCase() || "",
               icon: meta.icon, rank: c.market_cap_rank || 0,
               price: c.current_price || 0, change24h: c24, change7d: c7,
               marketCap: +((c.market_cap || 0) / 1e9).toFixed(1),
@@ -70,7 +65,6 @@ export default function Page() {
         }
       }
 
-      // Parse global
       let global: GlobalData | null = null;
       if (globalRes.status === "fulfilled" && globalRes.value.ok) {
         const raw = await globalRes.value.json();
@@ -86,19 +80,18 @@ export default function Page() {
         }
       }
 
-      // Parse trending
       let trending: TrendingCoin[] = [];
       if (trendingRes.status === "fulfilled" && trendingRes.value.ok) {
         const raw = await trendingRes.value.json();
         trending = (raw?.coins || []).slice(0, 7).map((c: any) => ({
           id: c.item.id, name: c.item.name, symbol: c.item.symbol,
-          thumb: c.item.thumb || "", rank: c.item.market_cap_rank || 0,
+          thumb: c.item.thumb || "",
+          rank: c.item.market_cap_rank || 0,
           price: c.item.data?.price || 0,
           change24h: c.item.data?.price_change_percentage_24h?.usd || 0,
         }));
       }
 
-      // Parse protocols
       let protocols: Protocol[] = [];
       if (protosRes.status === "fulfilled" && protosRes.value.ok) {
         const raw = await protosRes.value.json();
@@ -115,7 +108,6 @@ export default function Page() {
         }
       }
 
-      // Parse chains
       let chains: ChainData[] = [];
       if (chainsRes.status === "fulfilled" && chainsRes.value.ok) {
         const raw = await chainsRes.value.json();
@@ -129,10 +121,10 @@ export default function Page() {
       setState(s => ({
         ...s, coins, global, trending, protocols, chains,
         selectedCoin: s.selectedCoin || coins[0] || null,
-        loading: false, lastUpdated: new Date(), error: null,
+        loading: false, lastUpdated: new Date(),
       }));
-    } catch (e) {
-      setState(s => ({ ...s, loading: false, error: String(e) }));
+    } catch {
+      setState(s => ({ ...s, loading: false }));
     }
   }, []);
 
@@ -146,9 +138,7 @@ export default function Page() {
   return (
     <div className="flex flex-col h-dvh bg-[#0A0E17] overflow-hidden">
       <TopBar global={state.global} loading={state.loading} />
-
       <TabNav tab={tab} setTab={setTab} signalCount={4} />
-
       <main className="flex-1 overflow-y-auto overflow-x-hidden pb-16">
         {tab === "revops"   && <RevOpsView coins={state.coins} sectors={SECTORS} loading={state.loading} />}
         {tab === "overview" && <OverviewView coins={state.coins} global={state.global} loading={state.loading} onCoinClick={openToken} />}
@@ -157,13 +147,7 @@ export default function Page() {
         {tab === "sector"   && <SectorView coins={state.coins} sectors={SECTORS} loading={state.loading} onCoinClick={openToken} />}
         {tab === "defi"     && <DeFiView protocols={state.protocols} chains={state.chains} loading={state.loading} />}
       </main>
-
-      <StatusBar
-        loading={state.loading}
-        lastUpdated={state.lastUpdated}
-        coinCount={state.coins.length}
-        onRefresh={fetchAll}
-      />
+      <StatusBar loading={state.loading} lastUpdated={state.lastUpdated} coinCount={state.coins.length} onRefresh={fetchAll} />
     </div>
   );
 }
