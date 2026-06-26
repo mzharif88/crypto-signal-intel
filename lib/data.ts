@@ -204,3 +204,6 @@ export function genDateLabels(days: number): string[] {
     return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   });
 }
+
+// ── Tab navigation type ───────────────────────────────────────────
+export type TabId = "revops" | "overview" | "token" | "radar" | "sector" | "defi";
